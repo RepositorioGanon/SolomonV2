@@ -5,21 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Captura cámara RTSP</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      height: 100%;
+    }
     body {
       font-family: system-ui, -apple-system, sans-serif;
-      background-color: #ffffff;
-      min-height: 100vh;
+      margin: 0;
     }
     .mensaje {
       font-size: 0.9rem;
-    }
-    .mensaje.error {
-      color: #b02a37;
-    }
-    .mensaje.ok {
-      color: #0f5132;
     }
     .preview-img {
       width: 100%;
@@ -30,115 +36,341 @@
   <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
   <script src="app.js"></script>
 </head>
-<body>
-  <div class="container py-5" ng-controller="RtspController">
-    <div class="row justify-content-center">
-      <div class="col-12 ">
-        <div class="card shadow-sm border-0 rounded-3">
-          <div class="card-body">
-            <h1 class="h4 mb-4 text-primary text-center">Captura desde cámara RTSP</h1>
+<body ng-controller="RtspController">
+  <div class="d-flex flex-column min-vh-100">
+    <nav class="navbar navbar-dark bg-primary">
+      <div class="container-fluid">
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#mainMenu"
+          aria-controls="mainMenu"
+          aria-label="Menú"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="d-flex flex-column">
+          <span class="navbar-brand mb-0 p-0">Captura desde cámara RTSP</span>
+          <small class="text-white-50">Operación y panel de configuración</small>
+        </div>
+        <div class="ms-auto small">
+          <span ng-if="servidorOk" class="badge bg-success">Servidor listo</span>
+          <span ng-if="!servidorOk" class="badge bg-danger">Servidor no disponible</span>
+        </div>
+      </div>
+    </nav>
 
-            <div class="mb-3">
-              <label for="rtsp-url" class="form-label">URL de la cámara RTSP</label>
-              <input
-                id="rtsp-url"
-                type="text"
-                class="form-control"
-                ng-model="rtspUrl"
-                placeholder="rtsp://usuario:password@ip:554/ruta"
-              />
+    <div class="flex-grow-1 d-flex flex-column">
+      <!-- Menú de hamburguesa con offcanvas de Bootstrap -->
+      <div class="offcanvas offcanvas-start" tabindex="-1" id="mainMenu" aria-labelledby="mainMenuLabel">
+        <div class="offcanvas-header">
+          <h5 class="offcanvas-title" id="mainMenuLabel">
+            <i class="fa-solid fa-bars me-2"></i> Menú
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+        </div>
+        <div class="offcanvas-body">
+          <div class="mb-3">
+            <div class="text-uppercase small text-muted mb-1">
+              <i class="fa-solid fa-layer-group me-1"></i> Vistas
             </div>
-
-            <div class="mb-3">
-              <label for="tx-input" class="form-label">Transacciones</label>
-              <div class="input-group">
-                <input
-                  id="tx-input"
-                  type="text"
-                  class="form-control"
-                  ng-model="transaccionTexto"
-                  placeholder="Ingresa el documentNumber (ej. VTAGDH2054588)"
-                />
-                <button class="btn btn-outline-secondary" type="button" ng-click="buscarTransaccion()">
-                  Buscar
-                </button>
-              </div>
-              <div ng-if="transMensaje" class="mt-1 small" ng-class="{ 'text-danger': transMensajeError, 'text-success': !transMensajeError }">
-                {{ transMensaje }}
-              </div>
-            </div>
-
-            <!-- Controles adicionales (reservado, actualmente sin botones visibles) -->
-
-            <div ng-if="mensaje && (!autoCapturaActiva || mensajeError)" class="mensaje mb-2 text-center" ng-class="{ 'text-danger': mensajeError, 'text-success': !mensajeError }">
-              {{ mensaje }}
-            </div>
-
-            <!-- Zona principal: vista previa e información de transacción en paralelo -->
-            <div class="row mt-3 g-3">
-              <div class="col-12 col-lg-6" ng-if="imagenBase64">
-                <img ng-src="{{ imagenBase64 }}" alt="Captura RTSP" class="preview-img rounded border" />
-                <pre
-                  ng-if="inferenceResult"
-                  class="mt-3 p-2 bg-light border rounded small"
-                  style="max-height: 220px; overflow: auto;"
-                >{{ inferenceResult | json }}</pre>
-              </div>
-
-              <div class="col-12 col-lg-6">
-                <div ng-if="transaccionInfo" class="mb-3">
-                  <h2 class="h6 text-secondary mb-2 text-center">Transacción principal</h2>
-                  <p class="mb-1 text-center">
-                    <strong>{{ transaccionInfo.type }}</strong>
-                    &nbsp;#{{ transaccionInfo.documentNumber }}&nbsp;–&nbsp;{{ transaccionInfo.customer }}
-                  </p>
-                  <p class="text-muted mb-3 text-center">{{ transaccionInfo.date }}</p>
-                </div>
-
-                <div ng-if="transaccionItems.length">
-                  <h3 class="h6 text-secondary mb-2 text-center text-lg-start">Artículos</h3>
-                  <div class="table-responsive">
-                    <table class="table table-sm align-middle">
-                      <thead class="table-light">
-                        <tr>
-                          <th>SKU</th>
-                          <th>Artículo</th>
-                          <th class="text-center">Total</th>
-                          <th class="text-center">Capturada</th>
-                          <th class="text-center">Pendiente</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr ng-repeat="it in transaccionItems">
-                          <td class="fw-semibold">{{ it.itemSku }}</td>
-                          <td>
-                            <div class="fw-semibold">{{ it.itemName }}</div>
-                            <div class="text-muted small">{{ it.salesDescription }}</div>
-                          </td>
-                          <td class="text-center">{{ it.totalQty }}</td>
-                          <td class="text-center" style="max-width: 90px;">
-                            <input
-                              type="number"
-                              min="0"
-                              class="form-control form-control-sm text-center"
-                              ng-model="it.capturada"
-                              ng-change="actualizarSuma(it)"
-                            />
-                          </td>
-                          <td class="text-center">
-                            {{ it.totalQty - (it.capturada || 0) }}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+            <button
+              type="button"
+              class="btn btn-outline-primary w-100 mb-2"
+              ng-class="{ 'btn-primary text-white': vistaActiva === 'operacion' }"
+              ng-click="cambiarVista('operacion')"
+              data-bs-dismiss="offcanvas"
+            >
+              <i class="fa-solid fa-video me-2"></i> Página de operación
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-secondary w-100"
+              ng-class="{ 'btn-secondary text-white': vistaActiva === 'config' }"
+              ng-click="cambiarVista('config')"
+              data-bs-dismiss="offcanvas"
+            >
+              <i class="fa-solid fa-sliders me-2"></i> Panel de configuración
+            </button>
           </div>
         </div>
       </div>
+
+      <main class="flex-grow-1 overflow-auto py-3">
+        <div class="container-lg">
+          <!-- Vista de operación -->
+          <section ng-show="vistaActiva === 'operacion'">
+            <div class="view-title mb-3">Página de operación</div>
+            <div class="card shadow-sm">
+              <div class="card-body">
+              <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-7">
+                  <label for="rtsp-url" class="form-label">
+                    <i class="fa-solid fa-video me-1 text-primary"></i>
+                    URL de la cámara RTSP
+                  </label>
+                  <input
+                    id="rtsp-url"
+                    type="text"
+                    class="form-control"
+                    ng-model="rtspUrl"
+                    placeholder="rtsp://usuario:password@ip:554/ruta"
+                  />
+                  <div class="mt-1 small text-muted" ng-if="camaras.length">
+                    Puedes seleccionar una cámara guardada en el panel de configuración.
+                  </div>
+                </div>
+                <div class="col-12 col-md-5 d-flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-primary flex-fill"
+                    ng-click="capturarEInferir()"
+                    ng-disabled="cargando"
+                  >
+                    <i class="fa-solid fa-wand-magic-sparkles me-2"></i>
+                    {{ cargando ? 'Procesando...' : 'Capturar e inferir' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline-primary flex-fill"
+                    ng-click="autoCapturaActiva ? detenerAutoCaptura() : iniciarAutoCaptura()"
+                  >
+                    <i
+                      class="fa-solid me-2"
+                      ng-class="autoCapturaActiva ? 'fa-stop' : 'fa-play'"
+                    ></i>
+                    {{ autoCapturaActiva ? 'Detener autocaptura' : 'Iniciar autocaptura' }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-3">
+                <label for="tx-input" class="form-label">
+                  <i class="fa-solid fa-receipt me-1 text-primary"></i>
+                  Transacciones
+                </label>
+                <div class="input-group">
+                  <input
+                    id="tx-input"
+                    type="text"
+                    class="form-control"
+                    ng-model="transaccionTexto"
+                    placeholder="Ingresa el documentNumber (ej. VTAGDH2054588)"
+                  />
+                  <button class="btn btn-outline-secondary" type="button" ng-click="buscarTransaccion()">
+                    <i class="fa-solid fa-magnifying-glass me-1"></i>
+                    Buscar
+                  </button>
+                </div>
+                <div
+                  ng-if="transMensaje"
+                  class="mt-1 small"
+                  ng-class="{ 'text-danger': transMensajeError, 'text-success': !transMensajeError }"
+                >
+                  {{ transMensaje }}
+                </div>
+              </div>
+
+              <div
+                ng-if="mensaje && (!autoCapturaActiva || mensajeError)"
+                class="mensaje mb-2 mt-3 text-center"
+                ng-class="{ 'text-danger': mensajeError, 'text-success': !mensajeError }"
+              >
+                {{ mensaje }}
+              </div>
+
+              <div class="row mt-3 g-3">
+                <div class="col-12 col-lg-6" ng-if="imagenBase64">
+                  <img ng-src="{{ imagenBase64 }}" alt="Captura RTSP" class="preview-img rounded border" />
+                  <pre
+                    ng-if="inferenceResult"
+                    class="mt-3 p-2 bg-light border rounded small"
+                    style="max-height: 220px; overflow: auto;"
+                  >{{ inferenceResult | json }}</pre>
+                  <div
+                    ng-if="inferenceResult && inferenceResult.history"
+                    class="mt-2"
+                  >
+                    <div class="alert alert-info p-2 small mb-0">
+                      <div><strong>Conteo actual:</strong> {{ inferenceResult.history.current_count }}</div>
+                      <div><strong>Conteo previo:</strong> {{ inferenceResult.history.previous_count }}</div>
+                      <div><strong>Entraron:</strong> {{ inferenceResult.history.entered }}</div>
+                      <div><strong>Salieron:</strong> {{ inferenceResult.history.exited }}</div>
+                      <div><strong>Vistos únicos:</strong> {{ inferenceResult.history.total_unique_seen }}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-12 col-lg-6">
+                  <div ng-if="transaccionInfo" class="mb-3">
+                    <h2 class="h6 text-secondary mb-2 text-center">Transacción principal</h2>
+                    <p class="mb-1 text-center">
+                      <strong>{{ transaccionInfo.type }}</strong>
+                      &nbsp;#{{ transaccionInfo.documentNumber }}&nbsp;–&nbsp;{{ transaccionInfo.customer }}
+                    </p>
+                    <p class="text-muted mb-3 text-center">{{ transaccionInfo.date }}</p>
+                  </div>
+
+                  <div ng-if="transaccionItems.length">
+                    <h3 class="h6 text-secondary mb-2 text-center text-lg-start">Artículos</h3>
+                    <div class="table-responsive">
+                      <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                          <tr>
+                            <th>SKU</th>
+                            <th>Artículo</th>
+                            <th class="text-center">Total</th>
+                            <th class="text-center">Capturada</th>
+                            <th class="text-center">Pendiente</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr ng-repeat="it in transaccionItems">
+                            <td class="fw-semibold">{{ it.itemSku }}</td>
+                            <td>
+                              <div class="fw-semibold">{{ it.itemName }}</div>
+                              <div class="text-muted small">{{ it.salesDescription }}</div>
+                            </td>
+                            <td class="text-center">{{ it.totalQty }}</td>
+                            <td class="text-center" style="max-width: 90px;">
+                              <input
+                                type="number"
+                                min="0"
+                                class="form-control form-control-sm text-center"
+                                ng-model="it.capturada"
+                                ng-change="actualizarSuma(it)"
+                              />
+                            </td>
+                            <td class="text-center">
+                              {{ it.totalQty - (it.capturada || 0) }}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Vista de panel de configuración -->
+          <section ng-show="vistaActiva === 'config'">
+            <div class="view-title mb-3">Panel de configuración de cámaras</div>
+            <div class="card shadow-sm">
+              <div class="card-body">
+              <div class="mb-3">
+                <p class="mb-1">
+                  Da de alta tus cámaras RTSP una sola vez y luego podrás seleccionarlas desde la página de operación
+                  sin volver a escribir la URL.
+                </p>
+              </div>
+
+              <div class="border rounded-3 p-3 mb-4 bg-light">
+                <h2 class="h6 mb-3">
+                  <i class="fa-solid fa-circle-plus me-1 text-primary"></i>
+                  Nueva cámara
+                </h2>
+                <div class="row g-3 align-items-end">
+                  <div class="col-12 col-md-4">
+                    <label for="cam-nombre" class="form-label">
+                      <i class="fa-regular fa-circle-user me-1 text-primary"></i>
+                      Nombre
+                    </label>
+                    <input
+                      id="cam-nombre"
+                      type="text"
+                      class="form-control"
+                      ng-model="nuevaCamara.nombre"
+                      placeholder="Ej. Caja 1"
+                    />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label for="cam-url" class="form-label">
+                      <i class="fa-solid fa-video me-1 text-primary"></i>
+                      URL RTSP
+                    </label>
+                    <input
+                      id="cam-url"
+                      type="text"
+                      class="form-control"
+                      ng-model="nuevaCamara.url"
+                      placeholder="rtsp://usuario:password@ip:554/ruta"
+                    />
+                  </div>
+                  <div class="col-12 col-md-2 d-grid">
+                    <button
+                      type="button"
+                      class="btn btn-primary"
+                      ng-click="guardarNuevaCamara()"
+                    >
+                      <i class="fa-solid fa-floppy-disk me-1"></i>
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+                <div
+                  class="mt-2 small"
+                  ng-if="mensajeConfig"
+                  ng-class="{ 'text-danger': mensajeConfigError, 'text-success': !mensajeConfigError }"
+                >
+                  {{ mensajeConfig }}
+                </div>
+              </div>
+
+              <div ng-if="!camaras.length" class="text-muted small">
+                Aún no hay cámaras guardadas. Agrega la primera usando el formulario de arriba.
+              </div>
+
+              <div ng-if="camaras.length">
+                <h2 class="h6 mb-3">
+                  <i class="fa-solid fa-clapperboard me-1 text-primary"></i>
+                  Cámaras registradas
+                </h2>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th style="width: 22%;">Nombre</th>
+                        <th>URL RTSP</th>
+                        <th style="width: 180px;" class="text-center">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr ng-repeat="cam in camaras track by cam.id">
+                        <td class="fw-semibold">{{ cam.nombre }}</td>
+                        <td class="small text-break">{{ cam.url }}</td>
+                        <td class="text-center">
+                          <div class="btn-group btn-group-sm" role="group">
+                            <button
+                              type="button"
+                              class="btn btn-outline-primary"
+                              ng-click="usarCamara(cam)"
+                            >
+                              <i class="fa-solid fa-play me-1"></i>
+                              Usar en operación
+                            </button>
+                            <button
+                              type="button"
+                              class="btn btn-outline-danger"
+                              ng-click="eliminarCamara(cam)"
+                            >
+                              <i class="fa-regular fa-trash-can me-1"></i>
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
     </div>
   </div>
 

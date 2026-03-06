@@ -380,6 +380,22 @@ function enrichInferenceWithClassNames(flowData, classIdToName) {
   return enriched;
 }
 
+// Elimina el nodo "masks" de cada elemento de data[] en todos los flows (principal, secondary, third, etc.)
+function stripMasksFromFlows(container) {
+  if (!container || typeof container !== 'object') return;
+  Object.keys(container).forEach((key) => {
+    const flow = container[key];
+    if (!flow || typeof flow !== 'object') return;
+    const dataArr = flow.data;
+    if (!Array.isArray(dataArr)) return;
+    dataArr.forEach((item) => {
+      if (item && typeof item === 'object') {
+        delete item.masks;
+      }
+    });
+  });
+}
+
 // Aplica la máscara en un Worker Thread para no bloquear el event loop
 function aplicarMascaraEnWorker(base64Jpg, response) {
   return new Promise((resolve, reject) => {
@@ -442,6 +458,9 @@ app.post('/api/inference', async (req, res) => {
       // Si falla el enmascarado, seguimos respondiendo solo con los datos de inferencia
     }
 
+    // Eliminar masks de todas las respuestas de flows antes de enviarlas al cliente
+    stripMasksFromFlows(responseBody);
+
     res.status(anyOk ? 200 : firstStatus).json({
       maskedBase64Jpg: maskedBase64Jpg || base64Jpg,
       ...responseBody
@@ -500,6 +519,9 @@ app.post('/api/inference-from-capture', async (req, res) => {
     } catch (_) {
       // Si falla el enmascarado, se usa la imagen original
     }
+
+    // Eliminar masks de todas las respuestas de flows antes de enviarlas al cliente
+    stripMasksFromFlows(inferenceData);
 
     return res.json({
       originalBase64Jpg: base64Jpg,

@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { spawn } = require('child_process');
+const { Worker } = require('worker_threads');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -370,6 +371,63 @@ function enrichInferenceWithClassNames(flowData, classIdToName) {
   return enriched;
 }
 
+// Elimina el nodo "masks" de cada elemento de data[] en todos los flows (principal, secondary, third, etc.)
+function stripMasksFromFlows(container) {
+  if (!container || typeof container !== 'object') return;
+  Object.keys(container).forEach((key) => {
+    const flow = container[key];
+    if (!flow || typeof flow !== 'object') return;
+    const dataArr = flow.data;
+    if (!Array.isArray(dataArr)) return;
+    dataArr.forEach((item) => {
+      if (item && typeof item === 'object') {
+        delete item.masks;
+      }
+    });
+  });
+}
+
+// Aplica la máscara en un Worker Thread para no bloquear el event loop
+function aplicarMascaraEnWorker(base64Jpg, response) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'mask-worker.js'), {
+      workerData: { base64Jpg, response }
+    });
+    worker.on('message', resolve);
+    worker.on('error', reject);
+    worker.on('exit', (code) => {
+      if (code !== 0) reject(new Error('mask-worker salió con código ' + code));
+    });
+  });
+}
+
+// Opcional: enviar la respuesta de inferencia al servicio Python de tracking (Norfair)
+const TRACKER_URL = (process.env.TRACKER_URL || 'http://localhost:8083/track/inference').trim();
+const TRACKER_TIMEOUT_MS = Number(process.env.TRACKER_TIMEOUT_MS) || 2000;
+
+async function enviarATrackerSiDisponible(body) {
+  // Si no se configuró URL o está deshabilitado, devolvemos tal cual
+  if (!TRACKER_URL) return body;
+  try {
+    console.log('[tracker] enviando a', TRACKER_URL);
+    const resp = await axios.post(TRACKER_URL, body, {
+      timeout: TRACKER_TIMEOUT_MS,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (resp && resp.data && typeof resp.data === 'object') {
+      if (resp.data && resp.data.history) {
+        console.log('[tracker] history respuesta:', resp.data.history);
+      } else {
+        console.log('[tracker] respuesta sin history');
+      }
+      return resp.data;
+    }
+  } catch (err) {
+    console.warn('[tracker] Error llamando al servicio de tracking:', err.message || err);
+  }
+  return body;
+}
+
 // Inferencia directa al servidor externo
 async function runInference(buffer, flows, inferenceUrl, tokenInference) {
   const requests = flows.map((flow) => {
@@ -439,7 +497,27 @@ app.post('/api/inference', async (req, res) => {
       }
     });
 
-    res.status(anyOk ? 200 : firstStatus).json(responseBody);
+    // Aplicar máscara usando el flujo principal (si existe) y devolver también la imagen enmascarada
+    const mascaraResponse = responseBody.principal || responseBody;
+    let maskedBase64Jpg = null;
+    try {
+      maskedBase64Jpg = await aplicarMascaraEnWorker(base64Jpg, mascaraResponse);
+    } catch (_) {
+      // Si falla el enmascarado, seguimos respondiendo solo con los datos de inferencia
+    }
+
+    // Eliminar masks de todas las respuestas de flows antes de enviarlas al cliente
+    stripMasksFromFlows(responseBody);
+
+    const baseResponse = {
+      maskedBase64Jpg: maskedBase64Jpg || base64Jpg,
+      ...responseBody
+    };
+
+    // Enviar al servicio Python de tracking (si está disponible) para añadir history y tracked_detections
+    const finalResponse = await enviarATrackerSiDisponible(baseResponse);
+
+    res.status(anyOk ? 200 : firstStatus).json(finalResponse);
   } catch (err) {
     const status = err.response?.status || 502;
     res.status(status).json({

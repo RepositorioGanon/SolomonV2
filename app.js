@@ -6,6 +6,10 @@
     .controller('RtspController', RtspController);
 
   function RtspController($scope, $http, $timeout, $interval) {
+    // Estado general de la interfaz
+    $scope.vistaActiva = 'operacion';
+    $scope.menuAbierto = false;
+
     $scope.rtspUrl = '';
     $scope.cargando = false;
     $scope.mensaje = '';
@@ -41,6 +45,101 @@
     $scope.transMensajeError = false;
     var intervalAutoCaptura = null;
     $scope.autoCapturaActiva = false;
+
+    // Gestión de cámaras RTSP guardadas
+    $scope.camaras = [];
+    $scope.nuevaCamara = { nombre: '', url: '' };
+    $scope.mensajeConfig = '';
+    $scope.mensajeConfigError = false;
+
+    function cargarCamarasDesdeStorage() {
+      try {
+        var raw = localStorage.getItem('rtspCamaras');
+        if (!raw) {
+          $scope.camaras = [];
+          return;
+        }
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          $scope.camaras = parsed;
+        } else {
+          $scope.camaras = [];
+        }
+      } catch (e) {
+        $scope.camaras = [];
+      }
+    }
+
+    function guardarCamarasEnStorage() {
+      try {
+        localStorage.setItem('rtspCamaras', JSON.stringify($scope.camaras || []));
+      } catch (e) {
+        // Si falla el almacenamiento, solo reflejamos el mensaje en el panel de configuración
+        $scope.mensajeConfig = 'No se pudieron guardar las cámaras en este navegador.';
+        $scope.mensajeConfigError = true;
+      }
+    }
+
+    cargarCamarasDesdeStorage();
+
+    $scope.toggleMenu = function () {
+      $scope.menuAbierto = !$scope.menuAbierto;
+    };
+
+    $scope.cerrarMenu = function () {
+      $scope.menuAbierto = false;
+    };
+
+    $scope.cambiarVista = function (vista) {
+      $scope.vistaActiva = vista || 'operacion';
+      $scope.cerrarMenu();
+    };
+
+    $scope.guardarNuevaCamara = function () {
+      $scope.mensajeConfig = '';
+      $scope.mensajeConfigError = false;
+      var nombre = ($scope.nuevaCamara && $scope.nuevaCamara.nombre || '').trim();
+      var url = ($scope.nuevaCamara && $scope.nuevaCamara.url || '').trim();
+
+      if (!nombre) {
+        $scope.mensajeConfig = 'Escribe un nombre para la cámara.';
+        $scope.mensajeConfigError = true;
+        return;
+      }
+      if (!url || !url.toLowerCase().match(/^rtsp:\/\//)) {
+        $scope.mensajeConfig = 'Escribe una URL RTSP válida (ej: rtsp://...).';
+        $scope.mensajeConfigError = true;
+        return;
+      }
+
+      var nueva = {
+        id: Date.now(),
+        nombre: nombre,
+        url: url
+      };
+      $scope.camaras.push(nueva);
+      guardarCamarasEnStorage();
+
+      $scope.nuevaCamara = { nombre: '', url: '' };
+      $scope.mensajeConfig = 'Cámara guardada correctamente.';
+      $scope.mensajeConfigError = false;
+    };
+
+    $scope.eliminarCamara = function (cam) {
+      if (!cam) return;
+      var id = cam.id;
+      $scope.camaras = ($scope.camaras || []).filter(function (c) {
+        return c.id !== id;
+      });
+      guardarCamarasEnStorage();
+    };
+
+    $scope.usarCamara = function (cam) {
+      if (!cam || !cam.url) return;
+      $scope.rtspUrl = cam.url;
+      $scope.vistaActiva = 'operacion';
+      $scope.cerrarMenu();
+    };
 
     $scope.iniciarAutoCaptura = function () {
       var url = ($scope.rtspUrl || '').trim();
@@ -105,8 +204,17 @@
         .then(function (inferenceRes) {
           if (!inferenceRes) return;
           $scope.inferenceResult = inferenceRes.data;
+          try {
+            console.log('[frontend] inferenceResult:', $scope.inferenceResult);
+          } catch (e) {}
           if (!esAuto) $scope.mensaje = 'Listo.';
           $scope.mensajeError = false;
+          // Si el servidor ya devuelve la imagen enmascarada, la usamos directamente
+          var maskedBase64 = $scope.inferenceResult && $scope.inferenceResult.maskedBase64Jpg;
+          if (maskedBase64) {
+            return 'data:image/jpeg;base64,' + maskedBase64;
+          }
+          // En caso contrario, aplicamos la máscara en el cliente (modo compatible)
           var dataUrlImagen = 'data:image/jpeg;base64,' + $scope.base64Jpg;
           // El marcado/enmascarado debe basarse en el flow PRIMARIO
           var mascaraResponse = ($scope.inferenceResult && $scope.inferenceResult.principal)
